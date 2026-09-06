@@ -1,0 +1,26 @@
+# Blueprint for the A2A service. Kept in the repo so the deployment is
+# reviewable and reproducible rather than living only in dashboard state.
+services:
+  - type: web
+    name: octagon-a2a-production-east
+    runtime: docker
+    repo: https://github.com/OctagonAI/octagon-a2a-agents
+    dockerfilePath: ./Dockerfile
+    region: virginia
+    plan: starter
+    branch: main
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # The public origin. The agent card advertises $HOST_URL/a2a, so this must
+      # match the custom domain or clients that trust the card get a 404.
+      - key: HOST_URL
+        value: https://a2a.octagonai.co
+      - key: OCTAGON_API_URL
+        value: https://api.octagonai.co/v1
+      - key: LOG_LEVEL
+        value: info
+      # OCTAGON_API_KEY is deliberately NOT set. This is a multi-tenant
+      # deployment: every caller presents their own key as a bearer token and it
+      # is forwarded upstream, so usage bills against the caller. Setting a key
+      # here would silently spend Octagon's own credits for anyone who calls.
