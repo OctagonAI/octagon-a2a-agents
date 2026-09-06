@@ -21,7 +21,10 @@ export const SIGNING_ALG = "ES256";
 export const JWKS_PATH = "/.well-known/jwks.json";
 
 export type CardSigner = {
-  sign: (card: AgentCard) => Promise<AgentCard>;
+  /** `jwksUrl` must be absolute: it becomes the signature's `jku`, and a
+   *  verifier fetches it directly. A relative value silently produces
+   *  signatures nobody outside this process can check. */
+  sign: (card: AgentCard, jwksUrl: string) => Promise<AgentCard>;
   publicJwks: { keys: jose.JWK[] };
 };
 
@@ -34,7 +37,6 @@ export type CardSigner = {
  */
 export async function buildCardSigner(
   privateJwkJson: string | undefined,
-  jwksUrl: string,
 ): Promise<CardSigner | null> {
   if (!privateJwkJson?.trim()) return null;
 
@@ -49,16 +51,37 @@ export async function buildCardSigner(
     await jose.importJWK({ ...jwk, d: undefined } as jose.JWK, SIGNING_ALG),
   );
 
-  const generator = generateAgentCardSignature(privateKey as jose.CryptoKey, {
-    alg: SIGNING_ALG,
-    kid,
-    typ: "JOSE",
-    jku: jwksUrl,
-  });
+  // The protected header is fixed when the generator is built, and it carries
+  // `jku` — which depends on the host the card was requested on. Built per
+  // distinct URL and cached, rather than once at startup with a host we do not
+  // know yet.
+  const generators = new Map<string, ReturnType<typeof generateAgentCardSignature>>();
+  const generatorFor = (jwksUrl: string) => {
+    let generator = generators.get(jwksUrl);
+    if (!generator) {
+      generator = generateAgentCardSignature(privateKey as jose.CryptoKey, {
+        alg: SIGNING_ALG,
+        kid,
+        typ: "JOSE",
+        jku: jwksUrl,
+      });
+      generators.set(jwksUrl, generator);
+    }
+    return generator;
+  };
 
-  logger.info({ kid, jwksUrl }, "agent card signing enabled");
+  logger.info({ kid }, "agent card signing enabled");
   return {
-    sign: (card) => generator(card),
+    sign: async (card, jwksUrl) => {
+      // async so the guard rejects rather than throwing synchronously: the
+      // signature says Promise, and a caller with a .catch() would otherwise
+      // miss it entirely.
+      if (!/^https?:\/\//.test(jwksUrl)) {
+        // Fail loudly: an unverifiable signature looks like a working one.
+        throw new Error(`jku must be an absolute URL, got "${jwksUrl}"`);
+      }
+      return generatorFor(jwksUrl)(card);
+    },
     publicJwks: { keys: [{ ...publicJwk, kid, alg: SIGNING_ALG, use: "sig" }] },
   };
 }

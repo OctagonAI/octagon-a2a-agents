@@ -43,7 +43,8 @@ app.get("/.well-known/agent-card.json", async (req, res) => {
   // Signed on the way out rather than at startup: the card names the origin it
   // was requested on, so the bytes differ per host and each set needs its own
   // signature over exactly what is served.
-  const body = signer ? await signer.sign(card) : card;
+  // jku is absolute and host-derived, matching the origin the card names.
+  const body = signer ? await signer.sign(card, `${requestOrigin(req)}${JWKS_PATH}`) : card;
   res.type("application/json").send(JSON.stringify(body, null, 2));
 });
 
@@ -51,7 +52,7 @@ app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 // Signing is optional; when configured the public key must be fetchable, since
 // the card's `jku` points here and a signature nobody can verify is worthless.
-const signer = await buildCardSigner(config.agentCardPrivateJwk, `${config.hostUrl ?? ""}${JWKS_PATH}`);
+const signer = await buildCardSigner(config.agentCardPrivateJwk);
 if (signer) {
   app.get(JWKS_PATH, (_req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
