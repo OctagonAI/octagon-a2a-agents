@@ -10,20 +10,33 @@ import { logger } from "./logger.js";
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
-const agentCard = buildAgentCard();
+/**
+ * The origin this request arrived on. Render terminates TLS and forwards the
+ * original scheme and host, so the card can name where it is really served
+ * rather than where it was configured to think it lives.
+ */
+function requestOrigin(req: express.Request): string {
+  const proto = (req.get("x-forwarded-proto") ?? req.protocol ?? "https").split(",")[0]!.trim();
+  const host = (req.get("x-forwarded-host") ?? req.get("host") ?? "").split(",")[0]!.trim();
+  return host ? `${proto}://${host}` : config.localUrl;
+}
+
+// Built per request so the advertised URL tracks the hostname actually serving
+// it. Cheap: a plain object literal.
+const staticCard = buildAgentCard();
 
 // The card is the discovery entrypoint, so it is served at the well-known path
 // A2A clients look at, and cross-origin — a browser-based agent cannot read it
 // otherwise.
-app.get("/.well-known/agent-card.json", (_req, res) => {
+app.get("/.well-known/agent-card.json", (req, res) => {
   res.set("Access-Control-Allow-Origin", "*");
-  res.type("application/json").send(JSON.stringify(agentCard, null, 2));
+  res.type("application/json").send(JSON.stringify(buildAgentCard(requestOrigin(req)), null, 2));
 });
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
 const requestHandler = new DefaultRequestHandler(
-  agentCard,
+  staticCard,
   new InMemoryTaskStore(),
   new OctagonAgentExecutor(),
 );

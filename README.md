@@ -36,7 +36,7 @@ MCP exposes tools to *a model you control*. A2A lets *someone else's agent* hire
 
 ```bash
 bun install
-HOST_URL=http://localhost:4000 bun start
+bun start
 ```
 
 Discover the agent:
@@ -124,7 +124,7 @@ Remote agent  ──►  https://your-host/.well-known/agent-card.json   (discov
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `PORT` | `4000` | |
-| `HOST_URL` | `http://localhost:$PORT` | **Must be the public origin.** The card advertises `$HOST_URL/a2a`; get this wrong and every client that trusts the card gets a 404. |
+| `HOST_URL` | *(derived from the request)* | Optional. The card names the origin the request arrived on, so it is correct on any hostname without a redeploy. Set it only to force one canonical origin — and only to a host that already resolves. |
 | `OCTAGON_API_URL` | `https://api.octagonai.co/v1` | |
 | `OCTAGON_API_KEY` | unset | Optional fallback — see Authentication |
 | `LOG_LEVEL` | `info` | |

@@ -12,10 +12,11 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
-      # The public origin. The agent card advertises $HOST_URL/a2a, so this must
-      # match the custom domain or clients that trust the card get a 404.
-      - key: HOST_URL
-        value: https://a2a.octagonai.co
+      # HOST_URL is intentionally unset. The agent card derives its origin from
+      # the incoming request, so it is correct on the Render URL today and on a
+      # custom domain the moment DNS points there — no redeploy, and never a
+      # window where the card advertises a hostname that does not resolve. Pin
+      # it only to force one canonical origin, and only once that host answers.
       - key: OCTAGON_API_URL
         value: https://api.octagonai.co/v1
       - key: LOG_LEVEL

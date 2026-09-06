@@ -5,14 +5,21 @@ const { SKILL_MARKET_RESEARCH, SKILL_PREDICTION_MARKETS } = await import("./agen
 const { config } = await import("./config.js");
 
 describe("agent card", () => {
-  test("the advertised URL is the host the server actually mounts on", () => {
-    // A card is a promise other agents act on without asking. The invariant is
-    // that the URL it publishes is derived from the same config the server uses
-    // to mount /a2a — a hardcoded literal here would ship a card pointing at
-    // localhost, or at a path nothing serves.
-    const card = buildAgentCard();
-    for (const iface of card.supportedInterfaces) {
-      expect(iface.url).toBe(`${config.hostUrl}/a2a`);
+  test("it names the origin the request actually arrived on", () => {
+    // A card is a promise other agents act on without asking. Deriving the
+    // origin from the request keeps it true on whatever hostname served it —
+    // the Render URL today, a custom domain after DNS moves — with no redeploy.
+    for (const iface of buildAgentCard("https://a2a.example.test").supportedInterfaces) {
+      expect(iface.url).toBe("https://a2a.example.test/a2a");
+    }
+  });
+
+  test("a pinned HOST_URL wins over the request origin", () => {
+    // The override exists so a service behind several hostnames can still
+    // advertise one canonical origin.
+    expect(config.hostUrl).toBeUndefined();
+    for (const iface of buildAgentCard(undefined).supportedInterfaces) {
+      expect(iface.url).toBe(`${config.localUrl}/a2a`);
     }
   });
 

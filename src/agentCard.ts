@@ -13,7 +13,8 @@ const SECURITY = { schemes: { octagonApiKey: { list: [] } } };
  * is built from the configured host rather than hardcoded: a card advertising a
  * URL that does not answer is worse than no card at all.
  */
-export function buildAgentCard(): AgentCard {
+export function buildAgentCard(requestOrigin?: string): AgentCard {
+  const origin = config.hostUrl ?? requestOrigin ?? config.localUrl;
   return {
     name: "Octagon Research",
     description:
@@ -32,13 +33,13 @@ export function buildAgentCard(): AgentCard {
     // in index.ts; drop both together once 1.0 clients are the norm.
     supportedInterfaces: [
       {
-        url: `${config.hostUrl}/a2a`,
+        url: `${origin}/a2a`,
         protocolBinding: "JSONRPC",
         protocolVersion: "1.0",
         tenant: "",
       },
       {
-        url: `${config.hostUrl}/a2a`,
+        url: `${origin}/a2a`,
         protocolBinding: "JSONRPC",
         protocolVersion: "0.3",
         tenant: "",
