@@ -11,13 +11,19 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 
 /**
- * The origin this request arrived on. Render terminates TLS and forwards the
- * original scheme and host, so the card can name where it is really served
- * rather than where it was configured to think it lives.
+ * The origin this request arrived on, used to name the card's interface URL.
+ *
+ * Deliberately reads `host`, not `x-forwarded-host`. `host` is the name this
+ * service was actually addressed as — routing to it depends on that being
+ * right. `x-forwarded-host` is whatever an upstream proxy claims, and when
+ * octagonai.co proxies this document it sets that to `www.octagonai.co`, which
+ * serves no /a2a: trusting it would publish a card pointing at a dead endpoint.
+ * The scheme still comes from `x-forwarded-proto`, since TLS terminates
+ * upstream and the local connection is plain HTTP.
  */
 function requestOrigin(req: express.Request): string {
   const proto = (req.get("x-forwarded-proto") ?? req.protocol ?? "https").split(",")[0]!.trim();
-  const host = (req.get("x-forwarded-host") ?? req.get("host") ?? "").split(",")[0]!.trim();
+  const host = (req.get("host") ?? "").split(",")[0]!.trim();
   return host ? `${proto}://${host}` : config.localUrl;
 }
 
