@@ -21,6 +21,18 @@ services:
         value: https://api.octagonai.co/v1
       - key: LOG_LEVEL
         value: info
+      # Shared task store. Required before running more than one instance:
+      # tasks/get and tasks/resubscribe otherwise only work against the replica
+      # that handled the original request.
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: octagon-a2a-tasks-production-east
+          property: connectionString
+      # Private JWK for signing the agent card. Secret — set in the dashboard,
+      # never committed. Unset means the card is served unsigned, which is valid.
+      - key: AGENT_CARD_PRIVATE_JWK
+        sync: false
       # OCTAGON_API_KEY is deliberately NOT set. This is a multi-tenant
       # deployment: every caller presents their own key as a bearer token and it
       # is forwarded upstream, so usage bills against the caller. Setting a key

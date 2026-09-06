@@ -1,5 +1,8 @@
 import express from "express";
 import { DefaultRequestHandler, InMemoryTaskStore } from "@a2a-js/sdk/server";
+import type { TaskStore } from "@a2a-js/sdk/server";
+import { JWKS_PATH, buildCardSigner } from "./signing.js";
+import { RedisTaskStore, connectTaskRedis } from "./taskStore.js";
 import { jsonRpcHandler, UserBuilder } from "@a2a-js/sdk/server/express";
 import { buildAgentCard } from "./agentCard.js";
 import { config } from "./config.js";
@@ -34,16 +37,40 @@ const staticCard = buildAgentCard();
 // The card is the discovery entrypoint, so it is served at the well-known path
 // A2A clients look at, and cross-origin — a browser-based agent cannot read it
 // otherwise.
-app.get("/.well-known/agent-card.json", (req, res) => {
+app.get("/.well-known/agent-card.json", async (req, res) => {
   res.set("Access-Control-Allow-Origin", "*");
-  res.type("application/json").send(JSON.stringify(buildAgentCard(requestOrigin(req)), null, 2));
+  const card = buildAgentCard(requestOrigin(req));
+  // Signed on the way out rather than at startup: the card names the origin it
+  // was requested on, so the bytes differ per host and each set needs its own
+  // signature over exactly what is served.
+  const body = signer ? await signer.sign(card) : card;
+  res.type("application/json").send(JSON.stringify(body, null, 2));
 });
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
+// Signing is optional; when configured the public key must be fetchable, since
+// the card's `jku` points here and a signature nobody can verify is worthless.
+const signer = await buildCardSigner(config.agentCardPrivateJwk, `${config.hostUrl ?? ""}${JWKS_PATH}`);
+if (signer) {
+  app.get(JWKS_PATH, (_req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.type("application/json").send(JSON.stringify(signer.publicJwks, null, 2));
+  });
+}
+
+// Shared task state. Without it `tasks/get` and `tasks/resubscribe` only work
+// against the replica that handled the original request.
+const redis = await connectTaskRedis(config.redisUrl);
+const taskStore: TaskStore = redis ? new RedisTaskStore(redis) : new InMemoryTaskStore();
+logger.info({ store: redis ? "redis" : "in-memory" }, "task store selected");
+if (!redis) {
+  logger.warn("REDIS_URL is unset: task state is per-process. Do not run more than one instance.");
+}
+
 const requestHandler = new DefaultRequestHandler(
   staticCard,
-  new InMemoryTaskStore(),
+  taskStore,
   new OctagonAgentExecutor(),
 );
 

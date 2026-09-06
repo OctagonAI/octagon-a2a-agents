@@ -127,11 +127,33 @@ Remote agent  ──►  https://your-host/.well-known/agent-card.json   (discov
 | `HOST_URL` | *(derived from the request)* | Optional. The card names the origin the request arrived on, so it is correct on any hostname without a redeploy. Set it only to force one canonical origin — and only to a host that already resolves. |
 | `OCTAGON_API_URL` | `https://api.octagonai.co/v1` | |
 | `OCTAGON_API_KEY` | unset | Optional fallback — see Authentication |
+| `REDIS_URL` | unset | Shared task store. **Required before running more than one instance** — see below. |
+| `AGENT_CARD_PRIVATE_JWK` | unset | Private JWK (JSON) for signing the agent card. Unset = unsigned, which is valid. |
 | `LOG_LEVEL` | `info` | |
 
 Endpoints: `/.well-known/agent-card.json` · `/a2a` · `/health`
 
-**Before scaling past one instance,** replace `InMemoryTaskStore` in `src/index.ts` with a shared store. A2A tasks are long-running and resumable — `tasks/get` and `tasks/resubscribe` will fail against a replica that did not handle the original request, and all task history is lost on restart.
+### Task state
+
+A2A tasks are long-running and resumable: `tasks/get` and `tasks/resubscribe` arrive later and may land on a different instance. Set `REDIS_URL` and the service uses a Redis-backed store; leave it unset and it falls back to process memory, logging a warning that says not to run more than one instance.
+
+The Redis store mirrors the in-memory one exactly — same tenant/owner scoping, filters, newest-first ordering and opaque page tokens — so swapping stores changes durability and nothing an A2A client can observe. Tasks carry a 7-day TTL, and index entries for expired tasks are pruned on read, so the keyspace stays bounded on a `noeviction` instance.
+
+A *failed* connection is fatal rather than a silent fallback: running multi-replica against process memory is the exact bug this exists to prevent, and it would surface only as clients losing tasks.
+
+### Signing the agent card
+
+A2A supports signed agent cards (JWS over the RFC 8785 canonical form, §8.4.1). Set `AGENT_CARD_PRIVATE_JWK` to a private JWK containing a `kid`, and the service signs each card it serves and publishes the matching public key at `/.well-known/jwks.json`. The signature's protected header carries `kid` and `jku`, so a verifier can fetch the key without out-of-band configuration — signing without publishing the key would produce a card that looks trustworthy and cannot be checked.
+
+Generate a key:
+
+```bash
+bun -e "import * as jose from 'jose';
+const { privateKey } = await jose.generateKeyPair('ES256', { extractable: true });
+console.log(JSON.stringify({ ...(await jose.exportJWK(privateKey)), kid: 'octagon-a2a-1', alg: 'ES256' }))"
+```
+
+Cards are signed per request, because the card names the origin it was requested on — the bytes differ per host, and each set needs a signature over exactly what is served. An unsigned card remains valid; leaving the key unset changes nothing about how the service behaves.
 
 ## Architecture
 
@@ -153,7 +175,7 @@ The card declares both A2A `1.0` and `0.3` on the same URL. This is not belt-and
 
 ## Known limitations
 
-- **Task state is in memory.** See Deployment above.
+- **Task state is in memory unless `REDIS_URL` is set.** See Deployment above.
 - **Octagon returns some errors as text.** A malformed prediction-markets request comes back as a normal completion whose content is an error string, so the task reports `completed` with that text as the artifact. Detecting it would mean pattern-matching Octagon's error prose, which breaks the moment the wording changes.
 - **No push notifications.** The card says `pushNotifications: false` because there is no webhook sender here. Advertising it would have callers register callbacks that never fire.
 - **Routing is explicit, never inferred.** An unrouted message goes to `octagon-agent`. Guessing a skill from the message text would produce confidently wrong answers from the wrong agent.

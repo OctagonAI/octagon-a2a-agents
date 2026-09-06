@@ -1,3 +1,5 @@
 node_modules/
 .env
 *.log
+*.jwk.json
+agent-card-private-jwk.json

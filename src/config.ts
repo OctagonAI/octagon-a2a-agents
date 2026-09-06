@@ -36,4 +36,14 @@ export const config = {
   /** Optional fallback credential; see the note above. */
   octagonApiKey: process.env.OCTAGON_API_KEY,
   logLevel: env("LOG_LEVEL", "info"),
+  /**
+   * Redis for shared task state. Unset means single-instance, which is a
+   * legitimate configuration — but `tasks/get` and `tasks/resubscribe` then
+   * only work against the replica that handled the original request, so this
+   * must be set before scaling past one instance.
+   */
+  redisUrl: process.env.REDIS_URL,
+  /** Private JWK (JSON) used to sign the agent card. Unset means unsigned,
+   *  which is a valid card. */
+  agentCardPrivateJwk: process.env.AGENT_CARD_PRIVATE_JWK,
 } as const;
