@@ -61,5 +61,8 @@ app.use(
 );
 
 app.listen(config.port, () => {
-  logger.info(`A2A server listening on ${config.hostUrl} (agent card at /.well-known/agent-card.json)`);
+  // hostUrl is optional now — the card names whatever host serves it — so log
+  // the port actually bound rather than interpolating an undefined origin.
+  const origin = config.hostUrl ?? `port ${config.port}`;
+  logger.info(`A2A server listening on ${origin} (agent card at /.well-known/agent-card.json)`);
 });
